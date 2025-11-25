@@ -39,10 +39,10 @@ export GOVEE_DEVICE_MAC="your_mac"
 
 **Manage:**
 ```bash
-docker-compose logs -f          # View logs
-docker-compose stop             # Stop
-docker-compose restart          # Restart
-docker-compose down             # Remove
+docker compose logs -f          # View logs
+docker compose stop             # Stop
+docker compose restart          # Restart
+docker compose down             # Remove
 ```
 
 **Advantages:**
@@ -146,12 +146,12 @@ ping -c 3 <govee_lamp_ip>
 
 2. Test manually:
    ```bash
-   docker-compose run --rm chess-lamp python3 chess_lamp.py
+   docker compose run --rm chess-lamp python3 chess_lamp.py
    ```
 
 3. Check logs:
    ```bash
-   docker-compose logs -f
+   docker compose logs -f
    ```
 
 ### Lamp not responding
@@ -179,7 +179,7 @@ ping -c 3 <govee_lamp_ip>
 ```bash
 cd /path/to/chess-lamp
 git pull
-docker-compose up -d --build
+docker compose up -d --build
 ```
 
 ---
@@ -197,8 +197,8 @@ docker-compose up -d --build
 
 After deployment:
 
-1. Verify the service is running: `docker-compose ps`
-2. Check logs: `docker-compose logs -f`
+1. Verify the service is running: `docker compose ps`
+2. Check logs: `docker compose logs -f`
 3. Start a game on Lichess
 4. Watch the lamp change colors based on turns!
 

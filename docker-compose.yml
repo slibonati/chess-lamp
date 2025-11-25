@@ -2,6 +2,7 @@ name: chess-lamp
 
 services:
   chess-lamp:
+    image: chess-lamp:latest
     build: .
     container_name: chess-lamp
     restart: unless-stopped

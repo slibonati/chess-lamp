@@ -6,9 +6,12 @@ A Python application that integrates your Govee table lamp with Lichess chess ga
 
 - 🎮 Monitors active Lichess games in real-time
 - 💡 Automatically changes lamp color based on whose turn it is
-- 🔵 Blue light when it's your turn
+- 🟢 Green light when it's your turn
 - 🔴 Red light when it's your opponent's turn
-- ⚪ Gray light when the game is over
+- ⏰ Time pressure warnings - lamp blinks when time is low (≤30s warning, ≤10s critical)
+- ⚠️ Check detection - lamp blinks yellow when you're in check
+- 💡 Move notifications - brief flash when any move is made
+- 🔄 Automatic state restoration after games end
 
 ## Prerequisites
 
@@ -56,9 +59,36 @@ Edit `config.json` with your credentials:
 {
   "lichess_token": "your_lichess_api_token_here",
   "govee_api_key": "your_govee_api_key_here",
-  "govee_device_mac": "your_device_mac_address_here"
+  "govee_device_mac": "your_device_mac_address_here",
+  "govee_device_ip": "optional_ip_address_for_lan_control",
+  "restore_color": "#FFC864",
+  "restore_brightness": 100
 }
 ```
+
+**Configuration Options:**
+- `lichess_token` (required): Your Lichess API token
+- `govee_api_key` (required): Your Govee API key
+- `govee_device_mac` (required): MAC address of your Govee device
+- `govee_device_ip` (optional): IP address for faster LAN control
+- `restore_color` (optional): Hex color code to restore after games (e.g., `"#FFC864"` for warm yellow)
+- `restore_brightness` (optional): Brightness level (0-100) to restore after games (default: 100)
+- `time_pressure_enabled` (optional): Enable time pressure warnings (default: true)
+- `time_pressure_warning` (optional): Seconds remaining to trigger warning blink (default: 30)
+- `time_pressure_critical` (optional): Seconds remaining to trigger critical fast blink (default: 10)
+- `check_enabled` (optional): Enable check detection (default: true)
+- `check_color` (optional): Hex color code for check indication (default: "#FFFF00" yellow)
+- `check_brightness` (optional): Brightness level when in check (default: 60)
+- `check_blink` (optional): Blink lamp when in check (default: true)
+- `move_notification_enabled` (optional): Enable move notifications (default: true)
+- `move_notification_color` (optional): Hex color code for move flash (default: "#FFFFFF" white)
+- `move_notification_brightness` (optional): Brightness level for move flash (default: 80)
+- `move_notification_duration` (optional): Duration of move flash in seconds (default: 0.15)
+
+**Finding Hex Color Values:**
+- Use an online color picker like [htmlcolorcodes.com/color-picker](https://htmlcolorcodes.com/color-picker/)
+- Pick the color you want your lamp to return to after games
+- Copy the hex code (e.g., `#FFC864`) and add it to `restore_color` in config.json
 
 **Alternatively**, you can set environment variables:
 
@@ -162,14 +192,30 @@ docker compose restart
 
 ### Color Scheme
 
-- **Blue**: Your turn
-- **Red**: Opponent's turn
-- **Gray**: Game is over
+- **🟢 Green**: Your turn (RGB: 0, 255, 0) at 40% brightness
+- **🔴 Red**: Opponent's turn (RGB: 255, 0, 0) at 40% brightness
+- **⏰ Time Pressure**: Lamp blinks when time is low:
+  - **Warning** (≤30s): Single blink when it's your turn
+  - **Critical** (≤10s): Fast double blink when it's your turn
+- **⚠️ Check Detection**: Lamp indicates when you're in check:
+  - **Yellow blink** (default): Fast triple blink when in check
+  - Configurable color and brightness
+- **💡 Move Notifications**: Brief white flash when any move is made
+  - Quick visual feedback for move detection
+  - Configurable color, brightness, and duration
+- **Restore Color**: Returns to your configured `restore_color` when game ends
+
+**State Restoration:**
+- Before each game, the lamp's current state is saved
+- After the game ends, the lamp restores to its previous state
+- If the previous state can't be determined, it uses the `restore_color` from config.json
+- You can configure `restore_color` as a hex code (e.g., `"#FFC864"`) to match your preferred lamp color
 
 You can customize these colors in the `ChessLamp` class by modifying:
-- `self.my_turn_color`
-- `self.opponent_turn_color`
-- `self.game_over_color`
+- `self.my_turn_color` - Color when it's your turn
+- `self.opponent_turn_color` - Color when it's opponent's turn
+- `self.my_turn_brightness` - Brightness during your turn (default: 40%)
+- `self.opponent_turn_brightness` - Brightness during opponent's turn (default: 40%)
 
 ## How It Works
 
@@ -201,7 +247,29 @@ You can customize these colors in the `ChessLamp` class by modifying:
 
 ## Customization
 
-You can customize the behavior by modifying the `ChessLamp` class:
+### Configuration File
+
+You can customize the restore color, brightness, and time pressure warnings in `config.json`:
+
+```json
+{
+  "restore_color": "#FFC864",
+  "restore_brightness": 100,
+  "time_pressure_enabled": true,
+  "time_pressure_warning": 30,
+  "time_pressure_critical": 10
+}
+```
+
+- `restore_color`: Hex color code (e.g., `"#FFC864"` for warm yellow) or RGB dict `{"r": 255, "g": 200, "b": 100}`
+- `restore_brightness`: Brightness level 0-100 (default: 100)
+- `time_pressure_enabled`: Enable/disable time pressure warnings (default: true)
+- `time_pressure_warning`: Seconds remaining to trigger warning blink (default: 30)
+- `time_pressure_critical`: Seconds remaining to trigger critical fast blink (default: 10)
+
+### Code Customization
+
+You can also customize the behavior by modifying the `ChessLamp` class:
 
 - **Colors**: Change RGB values in the color dictionaries
 - **Brightness**: Adjust brightness levels (0-100)
