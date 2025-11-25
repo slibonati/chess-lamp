@@ -1,0 +1,21 @@
+name: chess-lamp
+
+services:
+  chess-lamp:
+    build: .
+    container_name: chess-lamp
+    restart: unless-stopped
+    # Use config.json file (preferred) or environment variables
+    environment:
+      - LICHESS_TOKEN=${LICHESS_TOKEN:-}
+      - GOVEE_API_KEY=${GOVEE_API_KEY:-}
+      - GOVEE_DEVICE_MAC=${GOVEE_DEVICE_MAC:-}
+    volumes:
+      - ./config.json:/app/config.json:ro
+    network_mode: host  # Required for Govee device discovery on local network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
