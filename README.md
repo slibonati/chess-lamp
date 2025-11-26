@@ -6,12 +6,17 @@ A Python application that integrates your Govee table lamp with Lichess chess ga
 
 - 🎮 Monitors active Lichess games in real-time
 - 💡 Automatically changes lamp color based on whose turn it is
-- 🟢 Green light when it's your turn
-- 🔴 Red light when it's your opponent's turn
+- 🎨 **Themes** - Pre-configured color schemes (classic, royal, ocean, amber, and more)
+- 🌅 **Gradual Dimming** - Smooth brightness transitions when colors change
+- 🔄 **Hot Reload** - Change themes and settings mid-game without restarting
+- 🟢 Green light when it's your turn (or theme-based colors)
+- 🔴 Red light when it's your opponent's turn (or theme-based colors)
 - ⏰ Time pressure warnings - lamp blinks when time is low (≤30s warning, ≤10s critical)
 - ⚠️ Check detection - lamp blinks yellow when you're in check
 - 💡 Move notifications - brief flash when any move is made
+- 🎉 Game result celebration - green pulse for wins, red/yellow for loss/draw
 - 🔄 Automatic state restoration after games end
+- 🔌 Enable/Disable API - Control the lamp remotely via REST API
 
 ## Prerequisites
 
@@ -62,9 +67,14 @@ Edit `config.json` with your credentials:
   "govee_device_mac": "your_device_mac_address_here",
   "govee_device_ip": "optional_ip_address_for_lan_control",
   "restore_color": "#FFC864",
-  "restore_brightness": 100
+  "restore_brightness": 100,
+  "theme": "classic",
+  "gradual_dim_enabled": true,
+  "gradual_dim_duration": 1.5
 }
 ```
+
+See `config.json.example` for all available options.
 
 **Configuration Options:**
 - `lichess_token` (required): Your Lichess API token
@@ -73,6 +83,9 @@ Edit `config.json` with your credentials:
 - `govee_device_ip` (optional): IP address for faster LAN control
 - `restore_color` (optional): Hex color code to restore after games (e.g., `"#FFC864"` for warm yellow)
 - `restore_brightness` (optional): Brightness level (0-100) to restore after games (default: 100)
+- `theme` (optional): Theme name (e.g., "classic", "royal", "ocean", "amber", "traffic") - see [COLOR_SUGGESTIONS.md](COLOR_SUGGESTIONS.md) for all themes
+- `gradual_dim_enabled` (optional): Enable gradual dimming when colors change (default: true)
+- `gradual_dim_duration` (optional): Duration of gradual dim in seconds (default: 1.5)
 - `time_pressure_enabled` (optional): Enable time pressure warnings (default: true)
 - `time_pressure_warning` (optional): Seconds remaining to trigger warning blink (default: 30)
 - `time_pressure_critical` (optional): Seconds remaining to trigger critical fast blink (default: 10)
@@ -84,6 +97,14 @@ Edit `config.json` with your credentials:
 - `move_notification_color` (optional): Hex color code for move flash (default: "#FFFFFF" white)
 - `move_notification_brightness` (optional): Brightness level for move flash (default: 80)
 - `move_notification_duration` (optional): Duration of move flash in seconds (default: 0.15)
+- `celebration_enabled` (optional): Enable game result celebration (default: true)
+- `celebration_win_color` (optional): Hex color for win celebration (default: "#00FF00" green)
+- `celebration_loss_color` (optional): Hex color for loss indication (default: "#FF0000" red)
+- `celebration_draw_color` (optional): Hex color for draw indication (default: "#FFFF00" yellow)
+- `celebration_brightness` (optional): Brightness for celebration (default: 100)
+- `celebration_pattern_count` (optional): Number of pulses/flashes for celebration (default: 3)
+
+**Note:** You can override theme colors by setting `my_turn_color`, `opponent_turn_color`, `my_turn_brightness`, and `opponent_turn_brightness` individually.
 
 **Finding Hex Color Values:**
 - Use an online color picker like [htmlcolorcodes.com/color-picker](https://htmlcolorcodes.com/color-picker/)
@@ -190,10 +211,21 @@ docker compose restart
 
 **Note:** The container uses `network_mode: host` to access your Govee lamp on the local network.
 
-### Color Scheme
+### Color Scheme & Themes
 
-- **🟢 Green**: Your turn (RGB: 0, 255, 0) at 40% brightness
-- **🔴 Red**: Opponent's turn (RGB: 255, 0, 0) at 40% brightness
+The lamp uses **themes** to provide chess-themed color schemes. You can change themes in `config.json` or use the API.
+
+**Available Themes:**
+- `classic` - Warm white & midnight blue (recommended)
+- `royal` - Royal gold & deep purple
+- `ocean` - Sky blue & navy blue
+- `amber` - Amber/gold & teal
+- `traffic` - Classic red/green (original behavior)
+- And more! See [COLOR_SUGGESTIONS.md](COLOR_SUGGESTIONS.md) for all themes
+
+**Default (traffic theme):**
+- **🟢 Green**: Your turn at 40% brightness
+- **🔴 Red**: Opponent's turn at 40% brightness
 - **⏰ Time Pressure**: Lamp blinks when time is low:
   - **Warning** (≤30s): Single blink when it's your turn
   - **Critical** (≤10s): Fast double blink when it's your turn
@@ -203,6 +235,11 @@ docker compose restart
 - **💡 Move Notifications**: Brief white flash when any move is made
   - Quick visual feedback for move detection
   - Configurable color, brightness, and duration
+- **🎉 Game Result Celebration**: Visual celebration when games end
+  - **Win**: Green pulsing pattern (3 pulses)
+  - **Loss**: Red flash pattern
+  - **Draw**: Yellow flash pattern
+  - Configurable colors and pattern count
 - **Restore Color**: Returns to your configured `restore_color` when game ends
 
 **State Restoration:**
@@ -211,11 +248,16 @@ docker compose restart
 - If the previous state can't be determined, it uses the `restore_color` from config.json
 - You can configure `restore_color` as a hex code (e.g., `"#FFC864"`) to match your preferred lamp color
 
-You can customize these colors in the `ChessLamp` class by modifying:
-- `self.my_turn_color` - Color when it's your turn
-- `self.opponent_turn_color` - Color when it's opponent's turn
-- `self.my_turn_brightness` - Brightness during your turn (default: 40%)
-- `self.opponent_turn_brightness` - Brightness during opponent's turn (default: 40%)
+**Hot Reload:**
+- Edit `config.json` during a game to change themes or settings
+- Changes are automatically detected and applied within ~1 second
+- No need to restart the service!
+
+**Customization:**
+You can customize colors in `config.json`:
+- Use a `theme` for pre-configured color schemes
+- Or set `my_turn_color`, `opponent_turn_color`, `my_turn_brightness`, `opponent_turn_brightness` individually
+- See [COLOR_SUGGESTIONS.md](COLOR_SUGGESTIONS.md) for theme details and customization options
 
 ## How It Works
 
@@ -296,6 +338,30 @@ docker compose up -d
 
 # 3. View logs
 docker compose logs -f
+```
+
+## REST API
+
+The application includes a REST API server (port 5000) for remote control:
+
+### Endpoints
+
+- `GET /api/status` - Get current status (enabled state, colors, current game)
+- `GET /api/themes` - Get list of available themes
+- `POST /api/theme` - Set theme by name: `{"theme": "classic"}`
+- `POST /api/enable` - Enable/disable chess-lamp: `{"enabled": true}` or `{"enabled": false}`
+- `POST /api/dimming` - Configure gradual dimming: `{"enabled": true, "duration": 1.5}`
+
+**Example:**
+```bash
+# Disable chess-lamp (restores lamp to default color)
+curl -X POST http://localhost:5000/api/enable -H "Content-Type: application/json" -d '{"enabled": false}'
+
+# Change theme
+curl -X POST http://localhost:5000/api/theme -H "Content-Type: application/json" -d '{"theme": "royal"}'
+
+# Check status
+curl http://localhost:5000/api/status
 ```
 
 ## License

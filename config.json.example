@@ -5,6 +5,9 @@
   "govee_device_ip": "optional_ip_address_for_lan_control",
   "restore_color": "#FFC864",
   "restore_brightness": 100,
+  "theme": "classic",
+  "gradual_dim_enabled": true,
+  "gradual_dim_duration": 1.5,
   "time_pressure_enabled": true,
   "time_pressure_warning": 30,
   "time_pressure_critical": 10,
@@ -15,6 +18,12 @@
   "move_notification_enabled": true,
   "move_notification_color": "#FFFFFF",
   "move_notification_brightness": 80,
-  "move_notification_duration": 0.15
+  "move_notification_duration": 0.15,
+  "celebration_enabled": true,
+  "celebration_win_color": "#00FF00",
+  "celebration_loss_color": "#FF0000",
+  "celebration_draw_color": "#FFFF00",
+  "celebration_brightness": 100,
+  "celebration_pattern_count": 3
 }
 

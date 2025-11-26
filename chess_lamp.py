@@ -9,9 +9,19 @@ import os
 import sys
 import time
 import asyncio
+import threading
 from typing import Optional, Dict, Any, Union
 import berserk
 import requests
+
+# Flask for API server (optional, only if flask is available)
+try:
+    from flask import Flask, jsonify, request
+    from flask_cors import CORS
+    FLASK_AVAILABLE = True
+except ImportError:
+    Flask = None
+    FLASK_AVAILABLE = False
 
 # Try to import LAN controller
 try:
@@ -96,10 +106,108 @@ def normalize_color(color: Union[str, Dict[str, int]]) -> str:
         raise ValueError(f"Invalid color format: {color}")
 
 
+# Color themes for chess games
+THEMES = {
+    "classic": {
+        "name": "Classic Chess (Warm White & Midnight Blue)",
+        "my_turn_color": "#FFF8DC",      # Warm white/cream
+        "opponent_turn_color": "#191970", # Midnight blue
+        "my_turn_brightness": 30,
+        "opponent_turn_brightness": 20
+    },
+    "pure": {
+        "name": "Pure White & Dark Gray",
+        "my_turn_color": "#FFFFFF",      # Pure white
+        "opponent_turn_color": "#2F2F2F", # Dark gray
+        "my_turn_brightness": 70,
+        "opponent_turn_brightness": 30
+    },
+    "ivory": {
+        "name": "Ivory & Charcoal",
+        "my_turn_color": "#F5E6D3",      # Cream/beige
+        "opponent_turn_color": "#36454F", # Charcoal
+        "my_turn_brightness": 65,
+        "opponent_turn_brightness": 35
+    },
+    "royal": {
+        "name": "Royal Gold & Deep Purple",
+        "my_turn_color": "#FFD700",      # Gold
+        "opponent_turn_color": "#4B0082", # Indigo/deep purple
+        "my_turn_brightness": 60,
+        "opponent_turn_brightness": 40
+    },
+    "ocean": {
+        "name": "Ocean Blue",
+        "my_turn_color": "#87CEEB",      # Sky blue
+        "opponent_turn_color": "#000080", # Navy blue
+        "my_turn_brightness": 65,
+        "opponent_turn_brightness": 35
+    },
+    "amber": {
+        "name": "Amber & Teal",
+        "my_turn_color": "#FFBF00",      # Amber/gold
+        "opponent_turn_color": "#008080", # Teal
+        "my_turn_brightness": 60,
+        "opponent_turn_brightness": 40
+    },
+    "subtle": {
+        "name": "Subtle White & Slate",
+        "my_turn_color": "#F8F8FF",      # Ghost white
+        "opponent_turn_color": "#708090", # Slate gray
+        "my_turn_brightness": 70,
+        "opponent_turn_brightness": 30
+    },
+    "warm": {
+        "name": "Warm Yellow & Deep Blue",
+        "my_turn_color": "#FFE4B5",      # Moccasin
+        "opponent_turn_color": "#00008B", # Dark blue
+        "my_turn_brightness": 60,
+        "opponent_turn_brightness": 40
+    },
+    "traffic": {
+        "name": "Traffic Light (Red & Green)",
+        "my_turn_color": "#00FF00",      # Green
+        "opponent_turn_color": "#FF0000", # Red
+        "my_turn_brightness": 40,
+        "opponent_turn_brightness": 40
+    }
+}
+
+
+def get_theme_colors(theme_name: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Get color settings for a theme.
+    
+    Args:
+        theme_name: Name of the theme (case-insensitive), or None for default
+        
+    Returns:
+        Dictionary with my_turn_color, opponent_turn_color, my_turn_brightness, opponent_turn_brightness
+    """
+    if not theme_name:
+        theme_name = "classic"  # Default theme
+    
+    theme_name_lower = theme_name.lower()
+    
+    if theme_name_lower not in THEMES:
+        print(f"⚠️  Unknown theme '{theme_name}', using 'classic' theme")
+        theme_name_lower = "classic"
+    
+    theme = THEMES[theme_name_lower]
+    print(f"✅ Using theme: {theme['name']}")
+    
+    return {
+        "my_turn_color": theme["my_turn_color"],
+        "opponent_turn_color": theme["opponent_turn_color"],
+        "my_turn_brightness": theme["my_turn_brightness"],
+        "opponent_turn_brightness": theme["opponent_turn_brightness"]
+    }
+
+
 class ChessLamp:
     """Main class to integrate Lichess game monitoring with Govee lamp control."""
     
-    def __init__(self, lichess_token: str, govee_api_key: str, govee_device_mac: str, govee_device_ip: Optional[str] = None, restore_color: Optional[Dict[str, int]] = None, restore_brightness: Optional[int] = None, time_pressure_warning: Optional[int] = 30, time_pressure_critical: Optional[int] = 10, time_pressure_enabled: Optional[bool] = True, check_enabled: Optional[bool] = True, check_color: Optional[str] = None, check_brightness: Optional[int] = None, check_blink: Optional[bool] = True, move_notification_enabled: Optional[bool] = True, move_notification_color: Optional[str] = None, move_notification_brightness: Optional[int] = None, move_notification_duration: Optional[float] = None):
+    def __init__(self, lichess_token: str, govee_api_key: str, govee_device_mac: str, govee_device_ip: Optional[str] = None, restore_color: Optional[Dict[str, int]] = None, restore_brightness: Optional[int] = None, theme: Optional[str] = None, my_turn_color: Optional[str] = None, opponent_turn_color: Optional[str] = None, my_turn_brightness: Optional[int] = None, opponent_turn_brightness: Optional[int] = None, gradual_dim_enabled: Optional[bool] = True, gradual_dim_duration: Optional[float] = 1.5, time_pressure_warning: Optional[int] = 30, time_pressure_critical: Optional[int] = 10, time_pressure_enabled: Optional[bool] = True, check_enabled: Optional[bool] = True, check_color: Optional[str] = None, check_brightness: Optional[int] = None, check_blink: Optional[bool] = True, move_notification_enabled: Optional[bool] = True, move_notification_color: Optional[str] = None, move_notification_brightness: Optional[int] = None, move_notification_duration: Optional[float] = None, celebration_enabled: Optional[bool] = True, celebration_win_color: Optional[str] = None, celebration_loss_color: Optional[str] = None, celebration_draw_color: Optional[str] = None, celebration_brightness: Optional[int] = None, celebration_pattern_count: Optional[int] = None):
         """
         Initialize the integration.
         
@@ -121,6 +229,19 @@ class ChessLamp:
             move_notification_color: Hex color for move flash (default: "#FFFFFF" white)
             move_notification_brightness: Brightness for move flash (default: 80)
             move_notification_duration: Duration of move flash in seconds (default: 0.15)
+            celebration_enabled: Enable/disable game result celebration (default: True)
+            celebration_win_color: Hex color for win celebration (default: "#00FF00" green)
+            celebration_loss_color: Hex color for loss indication (default: "#FF0000" red)
+            celebration_draw_color: Hex color for draw indication (default: "#FFFF00" yellow)
+            celebration_brightness: Brightness for celebration (default: 100)
+            celebration_pattern_count: Number of pulses for celebration (default: 3)
+            theme: Theme name (e.g., "classic", "royal", "ocean") - overrides individual color settings
+            my_turn_color: Hex color for your turn (overrides theme if set)
+            opponent_turn_color: Hex color for opponent's turn (overrides theme if set)
+            my_turn_brightness: Brightness when it's your turn (overrides theme if set)
+            opponent_turn_brightness: Brightness when it's opponent's turn (overrides theme if set)
+            gradual_dim_enabled: Enable gradual dimming after color changes (default: True)
+            gradual_dim_duration: Duration of gradual dim in seconds (default: 1.5)
         """
         self.lichess_token = lichess_token
         self.govee_api_key = govee_api_key
@@ -155,15 +276,28 @@ class ChessLamp:
         self.pre_game_state: Optional[Dict[str, Any]] = None  # Store state before game started
         
         # Color configuration - based on turn (not piece color)
-        # Your turn: Bright green
-        self.my_turn_color = "#00FF00"  # Pure green for your turn
-        # Opponent's turn: Red
-        self.opponent_turn_color = "#FF0000"  # Pure red for opponent's turn
+        # Use theme if provided, otherwise use individual settings or defaults
+        if theme:
+            theme_colors = get_theme_colors(theme)
+            # Theme provides defaults, but individual settings can override
+            self.my_turn_color = my_turn_color if my_turn_color else theme_colors["my_turn_color"]
+            self.opponent_turn_color = opponent_turn_color if opponent_turn_color else theme_colors["opponent_turn_color"]
+            self.my_turn_brightness = my_turn_brightness if my_turn_brightness is not None else theme_colors["my_turn_brightness"]
+            self.opponent_turn_brightness = opponent_turn_brightness if opponent_turn_brightness is not None else theme_colors["opponent_turn_brightness"]
+        else:
+            # No theme - use individual settings or defaults
+            self.my_turn_color = my_turn_color if my_turn_color else "#FFF8DC"  # Warm white/cream for your turn
+            self.opponent_turn_color = opponent_turn_color if opponent_turn_color else "#191970"  # Midnight blue for opponent's turn
+            self.my_turn_brightness = my_turn_brightness if my_turn_brightness is not None else 60  # 60% brightness when it's your turn
+            self.opponent_turn_brightness = opponent_turn_brightness if opponent_turn_brightness is not None else 40  # 40% brightness for opponent's turn
         
-        # Brightness configuration (0-100)
-        # Uniform brightness during gameplay
-        self.my_turn_brightness = 40  # 40% brightness when it's your turn (green)
-        self.opponent_turn_brightness = 40  # 40% brightness for opponent's turn (red)
+        # Gradual dimming configuration
+        self.gradual_dim_enabled = gradual_dim_enabled if gradual_dim_enabled is not None else True
+        self.gradual_dim_duration = gradual_dim_duration if gradual_dim_duration is not None else 1.5
+        
+        # Config file path for hot reloading
+        self.config_path = os.path.join(os.path.dirname(__file__), 'config.json')
+        self._config_last_modified = 0
         
         # Scene configuration (optional - use scenes instead of colors)
         # Set to None to use colors, or set to scene names/IDs to use scenes
@@ -213,6 +347,17 @@ class ChessLamp:
         self.move_notification_brightness = move_notification_brightness if move_notification_brightness is not None else 80  # Bright flash
         self.move_notification_duration = move_notification_duration if move_notification_duration is not None else 0.15  # Quick flash duration
         self._last_move_count = 0  # Track last move count to detect new moves
+        
+        # Game result celebration configuration
+        self.celebration_enabled = celebration_enabled if celebration_enabled is not None else True
+        self.celebration_win_color = celebration_win_color if celebration_win_color else "#00FF00"  # Green for win
+        self.celebration_loss_color = celebration_loss_color if celebration_loss_color else "#FF0000"  # Red for loss
+        self.celebration_draw_color = celebration_draw_color if celebration_draw_color else "#FFFF00"  # Yellow for draw
+        self.celebration_brightness = celebration_brightness if celebration_brightness is not None else 100  # Full brightness for celebration
+        self.celebration_pattern_count = celebration_pattern_count if celebration_pattern_count is not None else 3  # Number of pulses/flashes
+        
+        # Enable/disable flag - when False, lamp won't respond to game events
+        self.enabled = True  # Enabled by default
     
     def _get_device_id_from_api(self) -> str:
         """Get the actual device identifier from Govee API."""
@@ -486,7 +631,7 @@ class ChessLamp:
             print(f"⚠️  Error setting scene: {e}")
             return False
     
-    def set_lamp_color(self, color: Union[str, Dict[str, int]], brightness: int = 100):
+    def set_lamp_color(self, color: Union[str, Dict[str, int]], brightness: int = 100, gradual_dim: bool = False, dim_duration: float = 1.5):
         """
         Set the Govee lamp color.
         Tries LAN control first, then cloud API, then library.
@@ -494,6 +639,8 @@ class ChessLamp:
         Args:
             color: Hex color string (e.g., "#00FF00") or dictionary with 'r', 'g', 'b' values (0-255)
             brightness: Brightness level (0-100)
+            gradual_dim: If True, gradually dim from full brightness to target (default: False)
+            dim_duration: Duration of gradual dim in seconds (default: 1.5)
         """
         # Normalize color to RGB dict for internal use
         if isinstance(color, str):
@@ -502,6 +649,25 @@ class ChessLamp:
         else:
             rgb = color
             hex_color = rgb_to_hex(rgb)
+        
+        # If gradual dimming is enabled, first set color at full brightness, then dim
+        if gradual_dim and brightness < 100:
+            print(f"🌅 Starting gradual dim from 100% to {brightness}% over {dim_duration}s")
+            # Set color at full brightness first
+            if self._set_lamp_color_immediate(rgb, 100):
+                # Small delay to ensure color is set
+                time.sleep(0.1)
+                # Now gradually dim to target brightness
+                self._gradual_dim_brightness(rgb, 100, brightness, dim_duration)
+                return True
+            return False
+        else:
+            # Normal immediate color change
+            return self._set_lamp_color_immediate(rgb, brightness)
+    
+    def _set_lamp_color_immediate(self, rgb: Dict[str, int], brightness: int) -> bool:
+        """Internal method to set color immediately without gradual dimming."""
+        hex_color = rgb_to_hex(rgb)
         
         # Try LAN control first (now using correct format!)
         if self.lan_controller:
@@ -569,7 +735,55 @@ class ChessLamp:
         except Exception as e:
             print(f"⚠️  Direct API call failed: {e}, trying library method...")
             # Fall back to library method
-            return self._set_lamp_color_library(color, brightness)
+            return self._set_lamp_color_library(rgb, brightness)
+    
+    def _gradual_dim_brightness(self, rgb: Dict[str, int], start_brightness: int, end_brightness: int, duration: float):
+        """
+        Gradually dim brightness from start to end over duration.
+        
+        Args:
+            rgb: RGB color dict
+            start_brightness: Starting brightness (0-100)
+            end_brightness: Target brightness (0-100)
+            duration: Duration in seconds
+        """
+        if start_brightness == end_brightness:
+            return
+        
+        steps = max(10, int(duration * 10))  # At least 10 steps, or 10 steps per second
+        step_delay = duration / steps
+        
+        brightness_range = end_brightness - start_brightness
+        
+        print(f"   Dimming: {start_brightness}% → {end_brightness}% in {steps} steps")
+        
+        for i in range(steps + 1):
+            # Linear interpolation
+            progress = i / steps
+            current_brightness = int(start_brightness + (brightness_range * progress))
+            current_brightness = max(1, min(100, current_brightness))  # Clamp to 1-100
+            
+            # Set brightness only (color stays the same) - more efficient for dimming
+            if self.lan_controller:
+                try:
+                    # Use brightness-only method for smoother dimming
+                    self.lan_controller.set_brightness_only(current_brightness)
+                    # Small delay to allow command to process
+                    if i < steps:
+                        time.sleep(step_delay)
+                except Exception as e:
+                    print(f"   ⚠️  Dimming step failed: {e}")
+                    pass  # Continue if LAN fails during dimming
+            else:
+                # Fallback: use immediate method with brightness
+                try:
+                    self._set_lamp_color_immediate(rgb, current_brightness)
+                except:
+                    pass
+                if i < steps:
+                    time.sleep(step_delay)
+        
+        print(f"   ✅ Dimming complete: {end_brightness}%")
     
     def _set_lamp_color_library(self, rgb: Dict[str, int], brightness: int = 100):
         """Fallback method using the library."""
@@ -888,6 +1102,123 @@ class ChessLamp:
             print(f"⚠️  Error extracting move count: {e}")
             return 0
     
+    def get_game_result(self, game_data: Dict[str, Any]) -> Optional[str]:
+        """
+        Determine game result from game data.
+        
+        Args:
+            game_data: Game data from Lichess API
+            
+        Returns:
+            'win', 'loss', 'draw', or None if unknown
+        """
+        try:
+            # Get current user's username
+            user_info = self.lichess_client.account.get()
+            my_username = user_info.get('username', '').lower()
+            
+            # Check for winner
+            winner = game_data.get('winner')
+            if winner:
+                winner_username = winner.get('name', '').lower() if isinstance(winner, dict) else str(winner).lower()
+                if winner_username == my_username:
+                    return 'win'
+                else:
+                    return 'loss'
+            
+            # Check status for draw/stalemate
+            status = game_data.get('status', {})
+            if isinstance(status, dict):
+                status_name = status.get('name', '')
+            else:
+                status_name = str(status)
+            
+            if status_name in ['draw', 'stalemate']:
+                return 'draw'
+            
+            # Check if game ended without winner (could be draw or abandoned)
+            status_name_lower = status_name.lower()
+            if 'draw' in status_name_lower or 'stalemate' in status_name_lower:
+                return 'draw'
+            
+            # If game ended but no winner and not explicitly draw, might be loss (timeout, etc.)
+            if status_name in ['timeout', 'outoftime']:
+                # Need to check who timed out
+                # If it's our timeout, it's a loss
+                # This is tricky to determine, so we'll be conservative
+                pass
+            
+            return None
+        except Exception as e:
+            print(f"⚠️  Error determining game result: {e}")
+            return None
+    
+    def celebrate_game_result(self, result: str):
+        """
+        Celebrate game result with visual pattern.
+        
+        Args:
+            result: 'win', 'loss', or 'draw'
+        """
+        if not self.celebration_enabled:
+            return
+        
+        try:
+            if result == 'win':
+                print(f"🎉 You won! Celebrating with {self.celebration_win_color} pulses!")
+                # Green pulse pattern for win
+                self.pulse_lamp(self.celebration_win_color, self.celebration_brightness, 
+                               self.celebration_pattern_count, 0.4)  # Slightly longer pulses
+            elif result == 'loss':
+                print(f"😞 You lost. Showing {self.celebration_loss_color} indication...")
+                # Red flash pattern for loss (less celebratory)
+                self.blink_lamp(self.celebration_loss_color, self.celebration_brightness, 
+                               self.celebration_pattern_count, 0.25)  # Slightly longer flashes
+            elif result == 'draw':
+                print(f"🤝 Draw game. Showing {self.celebration_draw_color} indication...")
+                # Yellow flash pattern for draw
+                self.blink_lamp(self.celebration_draw_color, self.celebration_brightness, 
+                               self.celebration_pattern_count, 0.25)  # Slightly longer flashes
+        except Exception as e:
+            print(f"⚠️  Error during celebration: {e}")
+    
+    def pulse_lamp(self, color: Union[str, Dict[str, int]], brightness: int, pulse_count: int = 3, pulse_duration: float = 0.3):
+        """
+        Create a pulsing effect by gradually increasing and decreasing brightness.
+        
+        Args:
+            color: Hex color string or RGB dict
+            brightness: Maximum brightness level
+            pulse_count: Number of pulses
+            pulse_duration: Duration of each pulse (seconds)
+        """
+        if self._blinking_active:
+            return  # Don't interrupt other animations
+        
+        self._blinking_active = True
+        try:
+            for _ in range(pulse_count):
+                # Pulse up (brightness increase)
+                steps = 5
+                for i in range(steps):
+                    current_brightness = int(brightness * (i + 1) / steps)
+                    self.set_lamp_color(color, brightness=current_brightness)
+                    time.sleep(pulse_duration / (steps * 2))
+                
+                # Pulse down (brightness decrease)
+                for i in range(steps, 0, -1):
+                    current_brightness = int(brightness * i / steps)
+                    self.set_lamp_color(color, brightness=current_brightness)
+                    time.sleep(pulse_duration / (steps * 2))
+                
+                # Brief pause between pulses
+                if _ < pulse_count - 1:
+                    time.sleep(0.1)
+        except Exception as e:
+            print(f"⚠️  Error during pulse: {e}")
+        finally:
+            self._blinking_active = False
+    
     def handle_move_notification(self, game_data: Dict[str, Any]):
         """
         Detect new moves and flash the lamp.
@@ -1023,6 +1354,9 @@ class ChessLamp:
             
             while True:
                 try:
+                    # Check for config changes (hot reload) - check periodically during game
+                    self.reload_theme_from_config()
+                    
                     # Get current game state
                     games = list(self.lichess_client.games.get_ongoing())
                     current_game = None
@@ -1035,6 +1369,8 @@ class ChessLamp:
                     
                     if not current_game:
                         print(f"Game {game_id} no longer found (game ended or not ongoing)")
+                        # Try to get result from last known game state if available
+                        # (We don't have current_game here, so we'll skip celebration for this case)
                         print("Game over - Restoring lamp to previous state...")
                         if self.pre_game_state:
                             print(f"Previous state: {self.pre_game_state}")
@@ -1103,6 +1439,14 @@ class ChessLamp:
                         time.sleep(2)
                     
                     if status_name in ['mate', 'resign', 'draw', 'stalemate', 'timeout', 'outoftime', 'cheat', 'abandoned']:
+                        # Determine game result and celebrate
+                        game_result = self.get_game_result(current_game)
+                        if game_result:
+                            self.celebrate_game_result(game_result)
+                            # Longer pause after celebration so it's visible
+                            print("Waiting before restoring lamp state...")
+                            time.sleep(2.0)  # 2 second delay to see the celebration
+                        
                         if opponent_abandoned:
                             print("Game ended - Opponent left/disconnected. Restoring lamp to previous state...")
                         else:
@@ -1148,12 +1492,15 @@ class ChessLamp:
                     # Update lamp based on whose turn it is (green for my turn, red for opponent)
                     if is_my_turn != self.is_my_turn:
                         self.is_my_turn = is_my_turn
-                        if is_my_turn:
-                            print(f"It's your turn! - Setting {self.my_turn_color} at {self.my_turn_brightness}% brightness")
-                            self.set_lamp_color(self.my_turn_color, brightness=self.my_turn_brightness)
+                        if not self.enabled:
+                            print("⚠️  Chess-lamp is disabled - skipping lamp update")
                         else:
-                            print(f"Opponent's turn - Setting {self.opponent_turn_color} at {self.opponent_turn_brightness}% brightness")
-                            self.set_lamp_color(self.opponent_turn_color, brightness=self.opponent_turn_brightness)
+                            if is_my_turn:
+                                print(f"It's your turn! - Setting {self.my_turn_color} at {self.my_turn_brightness}% brightness")
+                                self.set_lamp_color(self.my_turn_color, brightness=self.my_turn_brightness, gradual_dim=self.gradual_dim_enabled, dim_duration=self.gradual_dim_duration)
+                            else:
+                                print(f"Opponent's turn - Setting {self.opponent_turn_color} at {self.opponent_turn_brightness}% brightness")
+                                self.set_lamp_color(self.opponent_turn_color, brightness=self.opponent_turn_brightness, gradual_dim=self.gradual_dim_enabled, dim_duration=self.gradual_dim_duration)
                     
                     # Check for time pressure (only when it's our turn)
                     if is_my_turn:
@@ -1186,13 +1533,89 @@ class ChessLamp:
             import traceback
             traceback.print_exc()
     
+    def reload_theme_from_config(self):
+        """Reload theme and color settings from config.json if it changed."""
+        try:
+            if not os.path.exists(self.config_path):
+                return False
+            
+            # Check if config file was modified
+            current_mtime = os.path.getmtime(self.config_path)
+            if current_mtime <= self._config_last_modified:
+                return False  # No changes
+            
+            self._config_last_modified = current_mtime
+            
+            # Load config
+            with open(self.config_path, 'r') as f:
+                config = json.load(f)
+            
+            # Get theme or individual colors
+            theme = config.get('theme')
+            my_turn_color = config.get('my_turn_color')
+            opponent_turn_color = config.get('opponent_turn_color')
+            my_turn_brightness = config.get('my_turn_brightness')
+            opponent_turn_brightness = config.get('opponent_turn_brightness')
+            gradual_dim_enabled = config.get('gradual_dim_enabled', True)
+            gradual_dim_duration = config.get('gradual_dim_duration', 1.5)
+            
+            # Apply theme if set
+            if theme:
+                theme_colors = get_theme_colors(theme)
+                if not my_turn_color:
+                    my_turn_color = theme_colors["my_turn_color"]
+                if not opponent_turn_color:
+                    opponent_turn_color = theme_colors["opponent_turn_color"]
+                if my_turn_brightness is None:
+                    my_turn_brightness = theme_colors["my_turn_brightness"]
+                if opponent_turn_brightness is None:
+                    opponent_turn_brightness = theme_colors["opponent_turn_brightness"]
+            
+            # Update colors if they changed
+            changed = False
+            if my_turn_color and my_turn_color != self.my_turn_color:
+                self.my_turn_color = my_turn_color
+                changed = True
+            if opponent_turn_color and opponent_turn_color != self.opponent_turn_color:
+                self.opponent_turn_color = opponent_turn_color
+                changed = True
+            if my_turn_brightness is not None and my_turn_brightness != self.my_turn_brightness:
+                self.my_turn_brightness = my_turn_brightness
+                changed = True
+            if opponent_turn_brightness is not None and opponent_turn_brightness != self.opponent_turn_brightness:
+                self.opponent_turn_brightness = opponent_turn_brightness
+                changed = True
+            if gradual_dim_enabled != self.gradual_dim_enabled:
+                self.gradual_dim_enabled = gradual_dim_enabled
+                changed = True
+            if gradual_dim_duration != self.gradual_dim_duration:
+                self.gradual_dim_duration = gradual_dim_duration
+                changed = True
+            
+            if changed:
+                print(f"🔄 Config reloaded! Theme: {theme or 'custom'}, Colors: {self.my_turn_color}/{self.opponent_turn_color}, Brightness: {self.my_turn_brightness}%/{self.opponent_turn_brightness}%")
+                return True
+            
+            return False
+        except Exception as e:
+            print(f"⚠️  Error reloading config: {e}")
+            return False
+    
     def monitor_games(self):
         """Monitor for ongoing games and stream events."""
         print("Monitoring for Lichess games...")
         print("Start a game on Lichess to begin!")
+        print("💡 Tip: Edit config.json to change themes without restarting!")
+        
+        # Initialize config file modification time
+        if os.path.exists(self.config_path):
+            self._config_last_modified = os.path.getmtime(self.config_path)
         
         while True:
             try:
+                # Check for config changes (hot reload)
+                self.reload_theme_from_config()
+                
                 # Check for ongoing games
                 game = self.get_current_game()
                 
@@ -1201,6 +1624,12 @@ class ChessLamp:
                     print(f"Found new game: {game.get('gameId')}")
                     self.current_game_id = game.get('gameId')
                     self._last_move_count = 0  # Reset move count for new game
+                    
+                    # Skip if disabled
+                    if not self.enabled:
+                        print("⚠️  Chess-lamp is disabled - skipping lamp updates")
+                        time.sleep(2)
+                        continue
                     
                     # Initialize turn state from current game data
                     if isinstance(game.get('full'), dict):
@@ -1216,10 +1645,10 @@ class ChessLamp:
                             # Set color IMMEDIATELY for fast response
                             if is_my_turn:
                                 print(f"It's your turn! - Setting {self.my_turn_color}")
-                                self.set_lamp_color(self.my_turn_color, brightness=self.my_turn_brightness)
+                                self.set_lamp_color(self.my_turn_color, brightness=self.my_turn_brightness, gradual_dim=self.gradual_dim_enabled, dim_duration=self.gradual_dim_duration)
                             else:
                                 print(f"Opponent's turn - Setting {self.opponent_turn_color}")
-                                self.set_lamp_color(self.opponent_turn_color, brightness=self.opponent_turn_brightness)
+                                self.set_lamp_color(self.opponent_turn_color, brightness=self.opponent_turn_brightness, gradual_dim=self.gradual_dim_enabled, dim_duration=self.gradual_dim_duration)
                         else:
                             # Fallback: try to determine from white/black fields
                             user_info = self.lichess_client.account.get()
@@ -1237,19 +1666,19 @@ class ChessLamp:
                                 print(f"Game started - You are playing WHITE")
                                 if is_my_turn:
                                     print("It's your turn! - Setting GREEN")
-                                    self.set_lamp_color(self.my_turn_color, brightness=self.my_turn_brightness)
+                                    self.set_lamp_color(self.my_turn_color, brightness=self.my_turn_brightness, gradual_dim=self.gradual_dim_enabled, dim_duration=self.gradual_dim_duration)
                                 else:
                                     print("Opponent's turn - Setting RED")
-                                    self.set_lamp_color(self.opponent_turn_color, brightness=self.opponent_turn_brightness)
+                                    self.set_lamp_color(self.opponent_turn_color, brightness=self.opponent_turn_brightness, gradual_dim=self.gradual_dim_enabled, dim_duration=self.gradual_dim_duration)
                             elif black_player == my_username:
                                 self.my_color = 'black'
                                 print(f"Game started - You are playing BLACK")
                                 if is_my_turn:
                                     print("It's your turn! - Setting GREEN")
-                                    self.set_lamp_color(self.my_turn_color, brightness=self.my_turn_brightness)
+                                    self.set_lamp_color(self.my_turn_color, brightness=self.my_turn_brightness, gradual_dim=self.gradual_dim_enabled, dim_duration=self.gradual_dim_duration)
                                 else:
                                     print("Opponent's turn - Setting RED")
-                                    self.set_lamp_color(self.opponent_turn_color, brightness=self.opponent_turn_brightness)
+                                    self.set_lamp_color(self.opponent_turn_color, brightness=self.opponent_turn_brightness, gradual_dim=self.gradual_dim_enabled, dim_duration=self.gradual_dim_duration)
                     
                     # Save state in background (non-blocking) - use timeout to avoid delay
                     print("Saving current lamp state (non-blocking)...")
@@ -1369,6 +1798,26 @@ def main():
     move_notification_brightness = config.get('move_notification_brightness', 80)
     move_notification_duration = config.get('move_notification_duration', 0.15)
     
+    # Get celebration settings from config
+    celebration_enabled = config.get('celebration_enabled', True)
+    celebration_win_color = config.get('celebration_win_color', "#00FF00")
+    celebration_loss_color = config.get('celebration_loss_color', "#FF0000")
+    celebration_draw_color = config.get('celebration_draw_color', "#FFFF00")
+    celebration_brightness = config.get('celebration_brightness', 100)
+    celebration_pattern_count = config.get('celebration_pattern_count', 3)
+    
+    # Get theme or individual turn color settings from config
+    # Theme takes precedence - if theme is set, it provides defaults that can be overridden
+    theme = config.get('theme')
+    my_turn_color = config.get('my_turn_color')
+    opponent_turn_color = config.get('opponent_turn_color')
+    my_turn_brightness = config.get('my_turn_brightness')
+    opponent_turn_brightness = config.get('opponent_turn_brightness')
+    
+    # Get gradual dimming settings from config
+    gradual_dim_enabled = config.get('gradual_dim_enabled', True)
+    gradual_dim_duration = config.get('gradual_dim_duration', 1.5)
+    
     integration = ChessLamp(
         lichess_token=config['lichess_token'],
         govee_api_key=config['govee_api_key'],
@@ -1386,11 +1835,174 @@ def main():
         move_notification_enabled=move_notification_enabled,  # Optional, from config
         move_notification_color=move_notification_color,  # Optional, from config
         move_notification_brightness=move_notification_brightness,  # Optional, from config
-        move_notification_duration=move_notification_duration  # Optional, from config
+        move_notification_duration=move_notification_duration,  # Optional, from config
+        celebration_enabled=celebration_enabled,  # Optional, from config
+        celebration_win_color=celebration_win_color,  # Optional, from config
+        celebration_loss_color=celebration_loss_color,  # Optional, from config
+        celebration_draw_color=celebration_draw_color,  # Optional, from config
+        celebration_brightness=celebration_brightness,  # Optional, from config
+        celebration_pattern_count=celebration_pattern_count,  # Optional, from config
+        theme=theme,  # Optional, from config
+        my_turn_color=my_turn_color,  # Optional, from config (overrides theme)
+        opponent_turn_color=opponent_turn_color,  # Optional, from config (overrides theme)
+        my_turn_brightness=my_turn_brightness,  # Optional, from config (overrides theme)
+        opponent_turn_brightness=opponent_turn_brightness,  # Optional, from config (overrides theme)
+        gradual_dim_enabled=gradual_dim_enabled,  # Optional, from config
+        gradual_dim_duration=gradual_dim_duration  # Optional, from config
     )
+    
+    # Start API server in background thread (if Flask available)
+    api_thread = None
+    if FLASK_AVAILABLE:
+        api_thread = threading.Thread(target=lambda: start_api_server(integration), daemon=True)
+        api_thread.start()
+        print("🌐 API server started on http://0.0.0.0:5000")
+        print("   Mobile app can connect to control themes and settings!")
     
     # Start monitoring
     integration.monitor_games()
+
+
+def start_api_server(chess_lamp_instance: ChessLamp):
+    """Start Flask API server for mobile app control."""
+    app = Flask(__name__)
+    CORS(app)  # Enable CORS for mobile app
+    
+    @app.route('/api/status', methods=['GET'])
+    def get_status():
+        """Get current status."""
+        return jsonify({
+            'theme': None,  # We don't track current theme name, just colors
+            'enabled': chess_lamp_instance.enabled,
+            'my_turn_color': chess_lamp_instance.my_turn_color,
+            'opponent_turn_color': chess_lamp_instance.opponent_turn_color,
+            'my_turn_brightness': chess_lamp_instance.my_turn_brightness,
+            'opponent_turn_brightness': chess_lamp_instance.opponent_turn_brightness,
+            'gradual_dim_enabled': chess_lamp_instance.gradual_dim_enabled,
+            'gradual_dim_duration': chess_lamp_instance.gradual_dim_duration,
+            'current_game_id': chess_lamp_instance.current_game_id,
+            'is_my_turn': chess_lamp_instance.is_my_turn,
+            'my_color': chess_lamp_instance.my_color
+        })
+    
+    @app.route('/api/themes', methods=['GET'])
+    def get_themes():
+        """Get list of available themes."""
+        themes_list = []
+        for key, theme in THEMES.items():
+            themes_list.append({
+                'id': key,
+                'name': theme['name'],
+                'my_turn_color': theme['my_turn_color'],
+                'opponent_turn_color': theme['opponent_turn_color'],
+                'my_turn_brightness': theme['my_turn_brightness'],
+                'opponent_turn_brightness': theme['opponent_turn_brightness']
+            })
+        return jsonify({'themes': themes_list})
+    
+    @app.route('/api/theme', methods=['POST'])
+    def set_theme():
+        """Set theme by name."""
+        data = request.json
+        theme_name = data.get('theme')
+        
+        if not theme_name or theme_name not in THEMES:
+            return jsonify({'error': f'Invalid theme: {theme_name}'}), 400
+        
+        theme = THEMES[theme_name]
+        chess_lamp_instance.my_turn_color = theme['my_turn_color']
+        chess_lamp_instance.opponent_turn_color = theme['opponent_turn_color']
+        chess_lamp_instance.my_turn_brightness = theme['my_turn_brightness']
+        chess_lamp_instance.opponent_turn_brightness = theme['opponent_turn_brightness']
+        
+        # Update config.json
+        try:
+            config_path = chess_lamp_instance.config_path
+            if os.path.exists(config_path):
+                with open(config_path, 'r') as f:
+                    config = json.load(f)
+                config['theme'] = theme_name
+                with open(config_path, 'w') as f:
+                    json.dump(config, f, indent=2)
+        except Exception as e:
+            print(f"⚠️  Could not update config.json: {e}")
+        
+        print(f"🎨 Theme changed via API: {theme['name']}")
+        return jsonify({'success': True, 'theme': theme_name, 'name': theme['name']})
+    
+    @app.route('/api/brightness', methods=['POST'])
+    def set_brightness():
+        """Set brightness levels."""
+        data = request.json
+        my_turn = data.get('my_turn_brightness')
+        opponent_turn = data.get('opponent_turn_brightness')
+        
+        if my_turn is not None:
+            chess_lamp_instance.my_turn_brightness = max(1, min(100, int(my_turn)))
+        if opponent_turn is not None:
+            chess_lamp_instance.opponent_turn_brightness = max(1, min(100, int(opponent_turn)))
+        
+        return jsonify({'success': True})
+    
+    @app.route('/api/dimming', methods=['POST'])
+    def set_dimming():
+        """Set dimming settings."""
+        data = request.json
+        if 'enabled' in data:
+            chess_lamp_instance.gradual_dim_enabled = bool(data['enabled'])
+        if 'duration' in data:
+            chess_lamp_instance.gradual_dim_duration = float(data['duration'])
+        
+        return jsonify({'success': True})
+    
+    @app.route('/api/enable', methods=['POST'])
+    def toggle_enable():
+        """Enable or disable chess-lamp."""
+        data = request.json
+        if 'enabled' in data:
+            new_enabled_state = bool(data['enabled'])
+            was_enabled = chess_lamp_instance.enabled
+            chess_lamp_instance.enabled = new_enabled_state
+            
+            # If disabling, restore lamp to pre-game state or default
+            if not new_enabled_state and was_enabled:
+                print("🔌 Disabling chess-lamp - restoring lamp to previous state...")
+                
+                # Try to restore pre-game state if we have it
+                restored = False
+                if chess_lamp_instance.pre_game_state:
+                    print("Attempting to restore to saved pre-game state...")
+                    restored = chess_lamp_instance.restore_lamp_state(chess_lamp_instance.pre_game_state)
+                
+                # Always fallback to default restore color to ensure lamp is restored
+                if not restored:
+                    print(f"🔌 Restoring to default color: {chess_lamp_instance.default_restore_color} at {chess_lamp_instance.default_restore_brightness}%")
+                    success = chess_lamp_instance.set_lamp_color(
+                        chess_lamp_instance.default_restore_color,
+                        brightness=chess_lamp_instance.default_restore_brightness
+                    )
+                    if success:
+                        print(f"✅ Successfully restored to default color")
+                    else:
+                        print(f"⚠️  Failed to restore - lamp may still be in game color")
+            elif new_enabled_state and not was_enabled:
+                print("🔌 Chess-lamp re-enabled - will resume normal operation")
+                # If there's an active game, we'll pick up on the next monitor cycle
+                # Save current state before resuming (in case we need to restore later)
+                if chess_lamp_instance.current_game_id:
+                    print("Active game detected - saving current lamp state before resuming...")
+                    current_state = chess_lamp_instance.get_lamp_state()
+                    if current_state:
+                        chess_lamp_instance.pre_game_state = current_state
+            
+            status = "enabled" if new_enabled_state else "disabled"
+            print(f"🔌 Chess-lamp {status} via API")
+            return jsonify({'success': True, 'enabled': chess_lamp_instance.enabled})
+        else:
+            return jsonify({'error': 'Missing "enabled" field'}), 400
+    
+    # Run Flask server
+    app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
 
 
 if __name__ == '__main__':

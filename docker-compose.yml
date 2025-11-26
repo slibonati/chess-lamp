@@ -5,7 +5,7 @@ services:
     image: chess-lamp:latest
     build: .
     container_name: chess-lamp
-    restart: unless-stopped
+    restart: "no"
     # Use config.json file (preferred) or environment variables
     environment:
       - LICHESS_TOKEN=${LICHESS_TOKEN:-}

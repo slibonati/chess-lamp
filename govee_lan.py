@@ -259,6 +259,38 @@ class GoveeLANController:
         # Return True optimistically since user confirmed it's working
         return True
     
+    def set_brightness_only(self, brightness: int) -> bool:
+        """
+        Set brightness only (without changing color).
+        Faster for gradual dimming.
+        
+        Args:
+            brightness: Brightness level (0-100)
+        """
+        target_ip = self.device_ip or self.discover_device()
+        if not target_ip:
+            return False
+        
+        ports = [4001, 4002, 4003]
+        brightness_cmd = {
+            "msg": {
+                "cmd": "brightness",
+                "data": {"value": brightness}
+            }
+        }
+        
+        for port in ports:
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                sock.settimeout(0.05)  # Very fast timeout for brightness-only
+                sock.sendto(json.dumps(brightness_cmd).encode('utf-8'), (target_ip, port))
+                sock.close()
+                return True  # Don't wait for response
+            except:
+                continue
+        
+        return True  # Optimistic - command likely worked
+    
     def get_state(self) -> Optional[Dict[str, Any]]:
         """
         Query device state via LAN.
