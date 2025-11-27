@@ -1865,8 +1865,13 @@ def main():
 
 def start_api_server(chess_lamp_instance: ChessLamp):
     """Start Flask API server for mobile app control."""
-    app = Flask(__name__)
+    app = Flask(__name__, static_folder='static', static_url_path='')
     CORS(app)  # Enable CORS for mobile app
+    
+    @app.route('/')
+    def index():
+        """Serve the web interface."""
+        return app.send_static_file('index.html')
     
     @app.route('/api/status', methods=['GET'])
     def get_status():
@@ -1926,6 +1931,26 @@ def start_api_server(chess_lamp_instance: ChessLamp):
                     json.dump(config, f, indent=2)
         except Exception as e:
             print(f"⚠️  Could not update config.json: {e}")
+        
+        # Immediately apply the new theme colors if a game is active
+        if chess_lamp_instance.current_game_id and chess_lamp_instance.is_my_turn is not None:
+            if chess_lamp_instance.enabled:
+                if chess_lamp_instance.is_my_turn:
+                    print(f"🎨 Applying new theme immediately (your turn): {theme['name']}")
+                    chess_lamp_instance.set_lamp_color(
+                        chess_lamp_instance.my_turn_color,
+                        brightness=chess_lamp_instance.my_turn_brightness,
+                        gradual_dim=chess_lamp_instance.gradual_dim_enabled,
+                        dim_duration=chess_lamp_instance.gradual_dim_duration
+                    )
+                else:
+                    print(f"🎨 Applying new theme immediately (opponent's turn): {theme['name']}")
+                    chess_lamp_instance.set_lamp_color(
+                        chess_lamp_instance.opponent_turn_color,
+                        brightness=chess_lamp_instance.opponent_turn_brightness,
+                        gradual_dim=chess_lamp_instance.gradual_dim_enabled,
+                        dim_duration=chess_lamp_instance.gradual_dim_duration
+                    )
         
         print(f"🎨 Theme changed via API: {theme['name']}")
         return jsonify({'success': True, 'theme': theme_name, 'name': theme['name']})
