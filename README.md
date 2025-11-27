@@ -340,6 +340,13 @@ docker compose up -d
 docker compose logs -f
 ```
 
+### Automated CI/CD Deployment
+
+Want automatic deployments when you push code? See **[CI_CD.md](CI_CD.md)** for:
+- 🔄 GitHub Actions to build and push Docker images
+- 🤖 Automatic updates on remote machines (Watchtower, webhooks, or cron)
+- 📦 Complete CI/CD pipeline setup
+
 ## REST API
 
 The application includes a REST API server (port 5000) for remote control:

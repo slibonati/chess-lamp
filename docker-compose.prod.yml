@@ -1,0 +1,26 @@
+name: chess-lamp
+
+services:
+  chess-lamp:
+    # Use registry image (set via environment variable or replace with your registry)
+    # Replace 'slibonati' with your GitHub username
+    image: ${CHESS_LAMP_IMAGE:-ghcr.io/slibonati/chess-lamp:latest}
+    container_name: chess-lamp
+    restart: unless-stopped
+    labels:
+      # Enable Watchtower to monitor this container
+      - com.centurylinklabs.watchtower.enable=true
+    # Use config.json file (preferred) or environment variables
+    environment:
+      - LICHESS_TOKEN=${LICHESS_TOKEN:-}
+      - GOVEE_API_KEY=${GOVEE_API_KEY:-}
+      - GOVEE_DEVICE_MAC=${GOVEE_DEVICE_MAC:-}
+    volumes:
+      - ./config.json:/app/config.json:ro
+    network_mode: host  # Required for Govee device discovery on local network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
