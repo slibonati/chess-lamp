@@ -1,4 +1,4 @@
-name: Build, Push, and Deploy to Kubernetes
+name: Build and Push to GHCR
 
 on:
   push:
@@ -9,14 +9,11 @@ on:
       - 'chess_lamp.py'
       - 'govee_lan.py'
       - 'requirements.txt'
-      - '.github/workflows/k8s-deploy.yml'
   workflow_dispatch:  # Allow manual trigger
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-  K8S_CONTROL_NODE: k8s-control.monkeyjuicey.com
-  K8S_NAMESPACE: chess-lamp
 
 jobs:
   build-and-push:
@@ -64,63 +61,9 @@ jobs:
         run: |
           echo "✅ Image pushed successfully!"
           echo "Tags: ${{ steps.meta.outputs.tags }}"
-
-  deploy-to-k8s:
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up kubectl
-        uses: azure/setup-kubectl@v3
-        with:
-          version: 'latest'
-
-      - name: Configure SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.K8S_SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H ${{ env.K8S_CONTROL_NODE }} >> ~/.ssh/known_hosts
-
-      - name: Copy deployment manifests
-        run: |
-          # Create deployment manifest from template
-          # Note: You'll need to commit the chess-lamp-deployment.yaml to the repo
-          # or create it dynamically here
-          scp -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no \
-            .github/k8s/chess-lamp-deployment.yaml \
-            slibonat@${{ env.K8S_CONTROL_NODE }}:/tmp/chess-lamp-deployment.yaml || \
-          echo "Manifest file not found, will create inline"
-
-      - name: Deploy to Kubernetes
-        run: |
-          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no \
-            slibonat@${{ env.K8S_CONTROL_NODE }} << 'EOF'
-            set -e
-            # Pull latest image
-            kubectl --kubeconfig=/home/slibonat/.kube/config \
-              set image deployment/chess-lamp chess-lamp=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
-              -n ${{ env.K8S_NAMESPACE }} || \
-            # If deployment doesn't exist, create it
-            kubectl --kubeconfig=/home/slibonat/.kube/config \
-              apply -f /tmp/chess-lamp-deployment.yaml
-            
-            # Wait for rollout
-            kubectl --kubeconfig=/home/slibonat/.kube/config \
-              rollout status deployment/chess-lamp -n ${{ env.K8S_NAMESPACE }} --timeout=300s
-            
-            # Show status
-            kubectl --kubeconfig=/home/slibonat/.kube/config \
-              get pods -n ${{ env.K8S_NAMESPACE }}
-          EOF
-
-      - name: Deployment status
-        run: |
-          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no \
-            slibonat@${{ env.K8S_CONTROL_NODE }} \
-            "kubectl --kubeconfig=/home/slibonat/.kube/config get pods,svc -n ${{ env.K8S_NAMESPACE }}"
+          echo ""
+          echo "📦 Image available at: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          echo ""
+          echo "🔄 The polling script on k8s-control will detect the new image"
+          echo "   and update the Kubernetes deployment automatically."
 
