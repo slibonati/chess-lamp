@@ -1369,14 +1369,16 @@ class ChessLamp:
                     
                     if not current_game:
                         print(f"Game {game_id} no longer found (game ended or not ongoing)")
-                        # Try to get result from last known game state if available
-                        # (We don't have current_game here, so we'll skip celebration for this case)
-                        print("Game over - Restoring lamp to previous state...")
-                        if self.pre_game_state:
-                            print(f"Previous state: {self.pre_game_state}")
-                        restored = self.restore_lamp_state(self.pre_game_state)
-                        if not restored:
-                            print("⚠️  State restoration may have failed - check logs above")
+                        # Only restore if enabled - if disabled, leave lamp as-is
+                        if self.enabled:
+                            print("Game over - Restoring lamp to previous state...")
+                            if self.pre_game_state:
+                                print(f"Previous state: {self.pre_game_state}")
+                            restored = self.restore_lamp_state(self.pre_game_state)
+                            if not restored:
+                                print("⚠️  State restoration may have failed - check logs above")
+                        else:
+                            print("⚠️  Chess-lamp is disabled - skipping lamp restore")
                         self.current_game_id = None
                         self.pre_game_state = None
                         self._last_move_count = 0  # Reset move count tracking
@@ -1451,11 +1453,15 @@ class ChessLamp:
                             print("Game ended - Opponent left/disconnected. Restoring lamp to previous state...")
                         else:
                             print("Game is over! Restoring lamp to previous state...")
-                        if self.pre_game_state:
-                            print(f"Previous state: {self.pre_game_state}")
-                        restored = self.restore_lamp_state(self.pre_game_state)
-                        if not restored:
-                            print("⚠️  State restoration may have failed - check logs above")
+                        # Only restore if enabled - if disabled, leave lamp as-is
+                        if self.enabled:
+                            if self.pre_game_state:
+                                print(f"Previous state: {self.pre_game_state}")
+                            restored = self.restore_lamp_state(self.pre_game_state)
+                            if not restored:
+                                print("⚠️  State restoration may have failed - check logs above")
+                        else:
+                            print("⚠️  Chess-lamp is disabled - skipping lamp restore")
                         # Clean up abandonment flag
                         if hasattr(self, '_abandonment_handled'):
                             delattr(self, '_abandonment_handled')
