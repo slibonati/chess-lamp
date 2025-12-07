@@ -1,0 +1,134 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: chess-lamp
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chess-lamp-config
+  namespace: chess-lamp
+data:
+  config.json: |
+    {
+      "lichess_token": "REPLACE_WITH_TOKEN",
+      "govee_api_key": "REPLACE_WITH_KEY",
+      "govee_device_mac": "REPLACE_WITH_MAC",
+      "govee_device_ip": "REPLACE_WITH_IP"
+    }
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: chess-lamp-secrets
+  namespace: chess-lamp
+type: Opaque
+stringData:
+  # These will be set via kubectl create secret or GitHub Actions
+  # lichess_token: ""
+  # govee_api_key: ""
+  # govee_device_mac: ""
+  # govee_device_ip: ""
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chess-lamp
+  namespace: chess-lamp
+  labels:
+    app: chess-lamp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: chess-lamp
+  template:
+    metadata:
+      labels:
+        app: chess-lamp
+    spec:
+      # Use hostNetwork for Govee device discovery on local network
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+      - name: chess-lamp
+        # Image tag will be updated by GitHub Actions workflow
+        # Format: ghcr.io/slibonati/chess-lamp:main-<commit-sha>
+        image: ghcr.io/slibonati/chess-lamp:main-0000000
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: api
+          containerPort: 5000
+          protocol: TCP
+        env:
+        # Use secrets if available, otherwise fall back to config.json
+        - name: LICHESS_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: chess-lamp-secrets
+              key: lichess_token
+              optional: true
+        - name: GOVEE_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: chess-lamp-secrets
+              key: govee_api_key
+              optional: true
+        - name: GOVEE_DEVICE_MAC
+          valueFrom:
+            secretKeyRef:
+              name: chess-lamp-secrets
+              key: govee_device_mac
+              optional: true
+        - name: GOVEE_DEVICE_IP
+          valueFrom:
+            secretKeyRef:
+              name: chess-lamp-secrets
+              key: govee_device_ip
+              optional: true
+        volumeMounts:
+        - name: config
+          mountPath: /app/config.json
+          subPath: config.json
+          readOnly: true
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          tcpSocket:
+            port: 5000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          failureThreshold: 5
+        readinessProbe:
+          tcpSocket:
+            port: 5000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          failureThreshold: 3
+      volumes:
+      - name: config
+        configMap:
+          name: chess-lamp-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chess-lamp-service
+  namespace: chess-lamp
+  labels:
+    app: chess-lamp
+spec:
+  type: NodePort
+  ports:
+  - port: 5000
+    targetPort: 5000
+    nodePort: 30500
+    protocol: TCP
+    name: api
+  selector:
+    app: chess-lamp

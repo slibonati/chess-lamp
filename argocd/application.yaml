@@ -1,0 +1,32 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: chess-lamp
+  namespace: argocd
+  # Add finalizer to ensure proper cleanup
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  
+  # Source: Git repository containing Kubernetes manifests
+  source:
+    repoURL: https://github.com/slibonati/chess-lamp
+    targetRevision: main
+    path: k8s  # Path to Kubernetes manifests in the repo
+  
+  # Destination: Kubernetes cluster
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: chess-lamp
+  
+  # Sync policy: Automatic sync when Git changes
+  syncPolicy:
+    automated:
+      prune: true      # Delete resources removed from Git
+      selfHeal: true   # Auto-sync if cluster drifts from Git
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true  # Create namespace if it doesn't exist
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
