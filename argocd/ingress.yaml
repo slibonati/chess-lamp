@@ -1,0 +1,31 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd-server-ingress
+  namespace: argocd
+  annotations:
+    # nginx-ingress annotations for ArgoCD
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+    # Force SSL redirect (uncomment if using TLS)
+    # nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    # If using cert-manager for TLS
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: argocd.monkeyjuicey.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: argocd-server
+            port:
+              number: 80
+  # Uncomment if you have TLS certificates
+  # tls:
+  # - hosts:
+  #   - argocd.monkeyjuicey.com
+  #   secretName: argocd-secret  # TLS secret

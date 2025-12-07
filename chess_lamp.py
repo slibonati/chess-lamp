@@ -1871,13 +1871,8 @@ def main():
 
 def start_api_server(chess_lamp_instance: ChessLamp):
     """Start Flask API server for mobile app control."""
-    app = Flask(__name__, static_folder='static', static_url_path='')
+    app = Flask(__name__)
     CORS(app)  # Enable CORS for mobile app
-    
-    @app.route('/')
-    def index():
-        """Serve the web interface."""
-        return app.send_static_file('index.html')
     
     @app.route('/api/status', methods=['GET'])
     def get_status():

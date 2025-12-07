@@ -1,5 +1,6 @@
 # Configuration files with sensitive data
 config.json
+dashboard-token.txt
 
 # Python
 __pycache__/

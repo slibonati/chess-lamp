@@ -83,7 +83,7 @@ See `config.json.example` for all available options.
 - `govee_device_ip` (optional): IP address for faster LAN control
 - `restore_color` (optional): Hex color code to restore after games (e.g., `"#FFC864"` for warm yellow)
 - `restore_brightness` (optional): Brightness level (0-100) to restore after games (default: 100)
-- `theme` (optional): Theme name (e.g., "classic", "royal", "ocean", "amber", "traffic") - see [COLOR_SUGGESTIONS.md](COLOR_SUGGESTIONS.md) for all themes
+- `theme` (optional): Theme name (e.g., "classic", "royal", "ocean", "amber", "traffic")
 - `gradual_dim_enabled` (optional): Enable gradual dimming when colors change (default: true)
 - `gradual_dim_duration` (optional): Duration of gradual dim in seconds (default: 1.5)
 - `time_pressure_enabled` (optional): Enable time pressure warnings (default: true)
@@ -221,7 +221,9 @@ The lamp uses **themes** to provide chess-themed color schemes. You can change t
 - `ocean` - Sky blue & navy blue
 - `amber` - Amber/gold & teal
 - `traffic` - Classic red/green (original behavior)
-- And more! See [COLOR_SUGGESTIONS.md](COLOR_SUGGESTIONS.md) for all themes
+- `pure` - Pure white & dark gray
+- `ivory` - Ivory & charcoal
+- And more! See configuration examples below
 
 **Default (traffic theme):**
 - **🟢 Green**: Your turn at 40% brightness
@@ -257,7 +259,6 @@ The lamp uses **themes** to provide chess-themed color schemes. You can change t
 You can customize colors in `config.json`:
 - Use a `theme` for pre-configured color schemes
 - Or set `my_turn_color`, `opponent_turn_color`, `my_turn_brightness`, `opponent_turn_brightness` individually
-- See [COLOR_SUGGESTIONS.md](COLOR_SUGGESTIONS.md) for theme details and customization options
 
 ## How It Works
 
@@ -321,31 +322,58 @@ You can also customize the behavior by modifying the `ChessLamp` class:
 
 This service can run on **any machine on your network** - it doesn't need to be on the same computer where you play Lichess.
 
-See **[DEPLOYMENT.md](DEPLOYMENT.md)** for detailed deployment instructions including:
-- 🐳 Docker deployment (recommended)
-- ⚙️ Systemd service (Linux/Raspberry Pi)
-- 🚀 Simple background service
-- Quick setup script
+### Kubernetes Deployment with ArgoCD (Recommended)
 
-**Quick deploy with Docker Compose:**
+This project uses **GitOps** with ArgoCD for automated Kubernetes deployments:
+
+1. **GitHub Actions** builds Docker images and pushes to GHCR
+2. **GitHub Actions** updates Kubernetes manifests with new image tags
+3. **ArgoCD** automatically syncs changes from Git to Kubernetes cluster
+
+**Prerequisites:**
+- Kubernetes cluster
+- ArgoCD installed
+- ArgoCD Application configured (see `argocd/application.yaml`)
+
+**Setup:**
 ```bash
-# 1. Create and edit config.json
-cp config.json.example config.json
-nano config.json
+# 1. Apply ArgoCD Application
+kubectl apply -f argocd/application.yaml
 
-# 2. Start the service
-docker compose up -d
-
-# 3. View logs
-docker compose logs -f
+# 2. ArgoCD will automatically:
+#    - Create namespace
+#    - Deploy from k8s/chess-lamp-deployment.yaml
+#    - Monitor Git for changes
 ```
 
-### Automated CI/CD Deployment
+**Access ArgoCD UI:**
+- URL: `https://argocd.monkeyjuicey.com` (or your ArgoCD URL)
+- Default username: `admin`
+- Get password: `kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d`
 
-Want automatic deployments when you push code? See **[CI_CD.md](CI_CD.md)** for:
-- 🔄 GitHub Actions to build and push Docker images
-- 🤖 Automatic updates on remote machines (Watchtower, webhooks, or cron)
-- 📦 Complete CI/CD pipeline setup
+**How it works:**
+- Push code → GitHub Actions builds image → Updates `k8s/chess-lamp-deployment.yaml` → ArgoCD auto-syncs → Deployment updates
+
+### Local Development
+
+For local testing, you can run directly:
+
+```bash
+# 1. Install dependencies
+pip install -r requirements.txt
+
+# 2. Create config.json
+cp config.json.example config.json
+nano config.json  # Add your API credentials
+
+# 3. Run
+python chess_lamp.py
+```
+
+Or use Docker Compose for local testing:
+```bash
+docker compose up
+```
 
 ## REST API
 
