@@ -38,7 +38,7 @@ metadata:
   labels:
     app: chess-lamp
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app: chess-lamp
