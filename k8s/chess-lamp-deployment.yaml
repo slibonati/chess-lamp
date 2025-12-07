@@ -54,7 +54,7 @@ spec:
       - name: chess-lamp
         # Image tag will be updated by GitHub Actions workflow
         # Format: ghcr.io/slibonati/chess-lamp:main-<commit-sha>
-        image: ghcr.io/slibonati/chess-lamp:main-0000000
+        image: ghcr.io/slibonati/chess-lamp:main-7af2cea2c03de95203fc155d660f36582fc3db53
         imagePullPolicy: IfNotPresent
         ports:
         - name: api
