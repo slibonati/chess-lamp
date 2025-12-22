@@ -1,4 +1,4 @@
-{
+i {
   "lichess_token": "your_lichess_api_token_here",
   "govee_api_key": "your_govee_api_key_here",
   "govee_device_mac": "your_device_mac_address_here",
